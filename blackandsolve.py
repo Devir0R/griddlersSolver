@@ -40,7 +40,7 @@ class BlackAndSolve:
                 inds) else ' ' for inds in self.column_indicators]] + colIndReorgenize
         colIndReorgenize = colIndReorgenize + \
             [[' ' if i < maxRowIndicatorsLength else '_' for i in range(
-                len(self.board)+maxRowIndicatorsLength)]]
+                len(self.board)+maxRowIndicatorsLength+1)]]
         board_copy = colIndReorgenize + board_copy
         stringifyMatrix = [[str(e) for e in row] for row in board_copy]
         lens = [max(map(len, col)) for col in zip(*stringifyMatrix)]
