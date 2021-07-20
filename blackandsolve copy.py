@@ -1,11 +1,35 @@
 from typing import Tuple
-
+from queue import Queue
 
 UNKNOWN = '◻'
 FILLED = '◼'
 EMPTY = 'X'
 ROW = 0
 COLUMN = 1
+
+
+def compareRowIndicators(cell1: 'Cell', cell2: 'Cell'):
+    if cell1.content == cell2.content and cell1.content == FILLED:
+        if(len(cell1.possibleRowBlocks) == 1 and len(cell2.possibleRowBlocks) != 1):
+            cell2.possibleRowBlocks = cell1.possibleRowBlocks
+            cell2.rowIndicatorsList[cell1.possibleRowBlocks[0]].cells.append(
+                cell2)
+        if(len(cell1.possibleRowBlocks) != 1 and len(cell2.possibleRowBlocks) == 1):
+            cell1.possibleRowBlocks = cell2.possibleRowBlocks
+            cell1.rowIndicatorsList[cell2.possibleRowBlocks[0]].cells.append(
+                cell1)
+
+
+def compareColIndicators(cell1: 'Cell', cell2: 'Cell'):
+    if cell1.content == cell2.content and cell1.content == FILLED:
+        if(len(cell1.possibleColBlocks) == 1 and len(cell2.possibleColBlocks) != 1):
+            cell2.possibleColBlocks = cell1.possibleColBlocks
+            cell2.colIndicatorsList[cell1.possibleColBlocks[0]].cells.append(
+                cell2)
+        if(len(cell1.possibleColBlocks) != 1 and len(cell2.possibleColBlocks) == 1):
+            cell1.possibleColBlocks = cell2.possibleColBlocks
+            cell1.colIndicatorsList[cell2.possibleColBlocks[0]].cells.append(
+                cell1)
 
 
 def create_indicators_list(source_indicators: 'list[list[int]]', axis, lineLength):
@@ -65,6 +89,163 @@ class BlackAndSolve:
         for row in self.board:
             for cell in row:
                 cell.markIfEmpty()
+
+    def cellWithNoPossibleIndicators(self):
+        for i in range(len(self.board)):
+            for j in range(len(self.board[i])):
+                exist_possible_row_indicator = False
+                exist_possible_col_indicator = False
+                for indic in self.row_indicators[i]:
+                    for r in indic.ranges:
+                        start, finish = r
+                        if j >= start and j <= finish:
+                            exist_possible_row_indicator = True
+                            break
+                    if exist_possible_row_indicator:
+                        break
+                for indic in self.column_indicators[j]:
+                    for r in indic.ranges:
+                        start, finish = r
+                        if i >= start and i <= finish:
+                            exist_possible_col_indicator = True
+                            break
+                    if exist_possible_col_indicator:
+                        break
+                if(not exist_possible_row_indicator or not exist_possible_col_indicator):
+                    self.board[i][j].markWith(EMPTY)
+
+    def fillIndicatorsByTheirRange(self):
+        for row_index in range(len(self.row_indicators)):
+            row_indic = self.row_indicators[row_index]
+            for indic in row_indic:
+                if(len(indic.ranges) == 1):
+                    start, finish = indic.ranges[0]
+                    maxStart = finish + 1 - indic.blockLength
+                    minFinish = start - 1 + indic.blockLength
+                    for i in range(maxStart, minFinish+1):
+                        self.board[row_index][i].content = FILLED
+                        indic.addCell(self.board[row_index][i])
+        for col_index in range(len(self.column_indicators)):
+            col_indic = self.column_indicators[col_index]
+            for indic in col_indic:
+                if(len(indic.ranges) == 1):
+                    start, finish = indic.ranges[0]
+                    maxStart = finish + 1 - indic.blockLength
+                    minFinish = start - 1 + indic.blockLength
+                    for i in range(maxStart, minFinish+1):
+                        self.board[i][col_index].content = FILLED
+                        indic.addCell(self.board[i][col_index])
+
+    def ifIndicatorFullBlockLimits(self, ind: 'Indicator'):
+        if(ind.isFull()):
+            start, end = min([pair[0] for pair in ind.ranges]), max(
+                [pair[1] for pair in ind.ranges])
+            x, y = ind.cells[0].coordinates
+            if(ind.axis == COLUMN):
+                if(start-1 >= 0):
+                    self.board[start-1][y].markWith(EMPTY)
+                if(end+1 < len(self.board[x])):
+                    self.board[end+1][y].markWith(EMPTY)
+            if(ind.axis == ROW):
+                if(start-1 >= 0):
+                    self.board[x][start-1].markWith(EMPTY)
+                if(end+1 < len(self.board)):
+                    self.board[x][end+1].markWith(EMPTY)
+
+    def blockIndicatorIdentity(self):
+        start = -1
+        for m in range(len(self.board)):
+            row = self.board[m]
+            for i in range(len(row)):
+                if row[i].content == FILLED:
+                    if start == -1:
+                        start = i
+                    else:
+                        continue
+                elif(start != -1):
+                    possiblesIndicators = []
+                    for j in range(len(self.row_indicators[m])):
+                        if(self.row_indicators[m][j].canContainRange((start, i-1))):
+                            possiblesIndicators.append(j)
+                    if(len(possiblesIndicators) == 1):
+                        for k in range(start, i):
+                            row[k].possibleRowBlocks = possiblesIndicators
+                            decidedIndicator = self.row_indicators[m][possiblesIndicators[0]]
+                            if row[k] not in decidedIndicator.cells:
+                                decidedIndicator.addCell(row[k])
+                                self.ifIndicatorFullBlockLimits(
+                                    decidedIndicator)
+                    start = -1
+        start = -1
+        for m in range(len(self.board)):
+            col = [self.board[k][m] for k in range(len(self.board[0]))]
+            for i in range(len(col)):
+                if col[i].content == FILLED:
+                    if start == -1:
+                        start = i
+                    else:
+                        continue
+                elif(start != -1):
+                    possiblesIndicators = []
+                    for j in range(len(self.column_indicators[m])):
+                        if(self.column_indicators[m][j].canContainRange((start, i-1))):
+                            possiblesIndicators.append(
+                                j)
+                    if(len(possiblesIndicators) == 1):
+                        for k in range(start, i):
+                            col[k].possibleColBlocks = possiblesIndicators
+                            decidedIndicator = self.column_indicators[m][possiblesIndicators[0]]
+                            if col[k] not in decidedIndicator.cells:
+                                decidedIndicator.addCell(col[k])
+                                self.ifIndicatorFullBlockLimits(
+                                    decidedIndicator)
+                    start = -1
+
+    def vaildate(self):
+        for indicatorsOfRow in self.row_indicators:
+            for indicator in indicatorsOfRow:
+                if len(indicator.ranges) == 0:
+                    raise RuntimeError("indicator with no ranges: ", indicator)
+        for indicatorsOfCol in self.column_indicators:
+            for indicator in indicatorsOfCol:
+                if len(indicator.ranges) == 0:
+                    raise RuntimeError("indicator with no ranges: ", indicator)
+
+    def unifyBlocks(self):
+        cellsQueue:  Queue[Cell] = Queue()
+        upUsed, downUsed, rightUsed, leftUsed = set(), set(), set(), set()
+        cellsQueue.put(self.board[0][0])
+        while not cellsQueue.empty():
+            cell = cellsQueue.get()
+            x, y = cell.coordinates
+            if(y < len(self.board)-1):
+                rightCell = self.board[x][y+1]
+                compareRowIndicators(cell, rightCell)
+                if(rightCell not in rightUsed):
+                    rightUsed.add(rightCell)
+                    cellsQueue.put(rightCell)
+            if(x < len(self.board[0])-1):
+                downCell = self.board[x+1][y]
+                compareColIndicators(cell, downCell)
+                if(downCell not in downUsed):
+                    downUsed.add(downCell)
+                    cellsQueue.put(downCell)
+        cellsQueue.put(self.board[-1][-1])
+        while not cellsQueue.empty():
+            cell = cellsQueue.get()
+            x, y = cell.coordinates
+            if(y > 0):
+                leftCell = self.board[x][y-1]
+                compareRowIndicators(cell, leftCell)
+                if(leftCell not in leftUsed):
+                    leftUsed.add(leftCell)
+                    cellsQueue.put(leftCell)
+            if(x > 0):
+                upCell = self.board[x-1][y]
+                compareColIndicators(cell, upCell)
+                if(upCell not in upUsed):
+                    upUsed.add(upCell)
+                    cellsQueue.put(upCell)
 
     def emptyCellsIndicatorsInform(self):
         for i in range(len(self.board)):
@@ -380,7 +561,19 @@ class Indicator:
     def __str__(self) -> str:
         return str(self.blockLength)
 
+    def canContainRange(self, range):
+        rangeStart, rangeFinish = range
+        if rangeFinish-rangeStart+1 > self.blockLength:
+            return False
+        for r in self.ranges:
+            start, finish = r
+            if start > rangeStart or finish < rangeFinish:
+                return False
+        return True
+
     def addCell(self, cell: Cell):
+        if cell in self.cells:
+            return
         self.cells.append(cell)
         y, x = cell.coordinates
         start, end = min([pair[0] for pair in self.ranges]), max(
@@ -493,13 +686,15 @@ row_indicators = [
 ]
 bas = BlackAndSolve(column_indicators=column_indicators,
                     row_indicators=row_indicators)
+
 bas.markEmptiesUsingFilled()
 bas.markEmptiesUsingEmpty()
-bas.markEmptiesUsingEmpty()
-bas.reevaluatePossibleBlocks()
-bas.fillGaps()
-bas.emptyCellsIndicatorsInform()
-bas.reevaluatePossibleBlocks()
-bas.fillGaps()
-
+for i in range(10):
+    bas.reevaluatePossibleBlocks()
+    bas.fillGaps()
+    bas.unifyBlocks()
+    bas.emptyCellsIndicatorsInform()
+    bas.blockIndicatorIdentity()
+    bas.fillIndicatorsByTheirRange()
+    bas.cellWithNoPossibleIndicators()
 bas.printState()
