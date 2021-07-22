@@ -862,7 +862,7 @@ class Indicator:
             raise RuntimeError("ranges cannot be empty")
 
 
-bas = BlackAndSolve.fromJsonFile("blackAndSolve3.json")
+bas = BlackAndSolve.fromJsonFile("blackAndSolve6.json")
 iterations, timePassed = bas.solve()
 bas.printState()
 print("took " + str(iterations) + " iterations")
