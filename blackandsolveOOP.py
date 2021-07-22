@@ -92,11 +92,13 @@ class BlackAndSolve:
                 cell.markIfEmpty()
 
     def solve(self):
-        self.markEmptiesUsingFilled()
-        self.markEmptiesUsingEmpty()
         count = 0
-        while not bas.isSolved():
-            count+=1
+        previosState = ''
+        currentState = self.boardRepresentation()
+        while not bas.isSolved() and count < 50 and previosState != currentState:
+            count += 1
+            self.markEmptiesUsingFilled()
+            self.markEmptiesUsingEmpty()
             self.reevaluatePossibleBlocks()
             self.reevaluateIndicatorsRanges()
             self.fillGaps()
@@ -106,7 +108,15 @@ class BlackAndSolve:
             self.fillIndicatorsByTheirRange()
             self.cellWithNoPossibleIndicators()
             self.addCellsToIndicators()
+            previosState = currentState
+            currentState = self.boardRepresentation()
         return count
+
+    def boardRepresentation(self):
+        return str(self) + "\n" + \
+            str([[ind.ranges for ind in row_ind]for row_ind in self.row_indicators]) + \
+            "\n" + str([[ind.ranges for ind in col_ind]
+                       for col_ind in self.column_indicators])
 
     @classmethod
     def fromJsonFile(cls, fileName):
@@ -132,32 +142,34 @@ class BlackAndSolve:
             for i in range(len(one_indicator_list)):
                 current_indicator: Indicator = one_indicator_list[i]
                 if i+1 < len(one_indicator_list):
-                    maximalEnd = one_indicator_list[i +
-                                                    1].maximalEnd()
+                    minimalStart = one_indicator_list[i +
+                                                      1].minimalStart()-1
                     indexes_to_remove = []
                     for j in range(len(current_indicator.ranges)):
                         start, finish = current_indicator.ranges[j]
-                        if start > maximalEnd:
+                        if start > minimalStart:
                             indexes_to_remove.append(j)
-                        elif maximalEnd >= start and maximalEnd <= finish:
-                            current_indicator.ranges[j] = (start, maximalEnd)
-                            if maximalEnd - start + 1 < current_indicator.blockLength:
+                        elif minimalStart >= start and minimalStart <= finish:
+                            current_indicator.ranges[j] = (start, minimalStart)
+                            if minimalStart - start + 1 < current_indicator.blockLength:
                                 indexes_to_remove.append(j)
+                    indexes_to_remove.reverse()
                     for index in indexes_to_remove:
                         del current_indicator.ranges[index]
                 if i-1 >= 0:
-                    minimalStart = one_indicator_list[i -
-                                                      1].minimalStart()
+                    minimalEnd = one_indicator_list[i -
+                                                    1].minimalEnd()+1
                     indexes_to_remove = []
                     for j in range(len(current_indicator.ranges)):
                         start, finish = current_indicator.ranges[j]
-                        if finish < minimalStart:
+                        if finish < minimalEnd:
                             indexes_to_remove.append(j)
-                        elif minimalStart >= start and minimalStart <= finish:
+                        elif minimalEnd >= start and minimalEnd <= finish:
                             current_indicator.ranges[j] = (
-                                minimalStart, finish)
-                            if finish - minimalStart + 1 < current_indicator.blockLength:
+                                minimalEnd, finish)
+                            if finish - minimalEnd + 1 < current_indicator.blockLength:
                                 indexes_to_remove.append(j)
+                    indexes_to_remove.reverse()
                     for index in indexes_to_remove:
                         del current_indicator.ranges[index]
 
@@ -167,11 +179,13 @@ class BlackAndSolve:
                 cell: Cell = self.board[i][j]
                 if(cell.content == FILLED):
                     if(len(cell.possibleColBlocks) == 1 and cell not in self.column_indicators[j][cell.possibleColBlocks[0]].cells):
-                        self.column_indicators[j][cell.possibleColBlocks[0]].addCell(
-                            cell)
+                        current_col_indicator = self.column_indicators[j][cell.possibleColBlocks[0]]
+                        current_col_indicator.addCell(cell)
+                        self.ifIndicatorFullBlockLimits(current_col_indicator)
                     if(len(cell.possibleRowBlocks) == 1 and cell not in self.row_indicators[i][cell.possibleRowBlocks[0]].cells):
-                        self.row_indicators[i][cell.possibleRowBlocks[0]].addCell(
-                            cell)
+                        current_row_indicator = self.row_indicators[i][cell.possibleRowBlocks[0]]
+                        current_row_indicator.addCell(cell)
+                        self.ifIndicatorFullBlockLimits(current_row_indicator)
 
     def cellWithNoPossibleIndicators(self):
         for i in range(len(self.board)):
@@ -210,6 +224,7 @@ class BlackAndSolve:
                         self.board[row_index][i].markWith(
                             FILLED, rowIndicator=indicaror_index)
                         indic.addCell(self.board[row_index][i])
+                    self.ifIndicatorFullBlockLimits(indic)
         for col_index in range(len(self.column_indicators)):
             col_indic = self.column_indicators[col_index]
             for indicator_index in range(len(col_indic)):
@@ -222,6 +237,7 @@ class BlackAndSolve:
                         self.board[i][col_index].markWith(
                             FILLED, colIndicator=indicator_index)
                         indic.addCell(self.board[i][col_index])
+                    self.ifIndicatorFullBlockLimits(indic)
 
     def ifIndicatorFullBlockLimits(self, ind: 'Indicator'):
         if(ind.isFull()):
@@ -269,8 +285,8 @@ class BlackAndSolve:
                     start = -1
             start = -1
         start = -1
-        for m in range(len(self.board)):
-            col = [self.board[k][m] for k in range(len(self.board[0]))]
+        for m in range(len(self.board[0])):
+            col = [self.board[k][m] for k in range(len(self.board))]
             for i in range(len(col)):
                 if col[i].content == FILLED:
                     if start == -1:
@@ -310,13 +326,13 @@ class BlackAndSolve:
         while not cellsQueue.empty():
             cell = cellsQueue.get()
             x, y = cell.coordinates
-            if(y < len(self.board)-1):
+            if(y < len(self.board[0])-1):
                 rightCell = self.board[x][y+1]
                 compareRowIndicators(cell, rightCell)
                 if(rightCell not in rightUsed):
                     rightUsed.add(rightCell)
                     cellsQueue.put(rightCell)
-            if(x < len(self.board[0])-1):
+            if(x < len(self.board)-1):
                 downCell = self.board[x+1][y]
                 compareColIndicators(cell, downCell)
                 if(downCell not in downUsed):
@@ -393,7 +409,7 @@ class BlackAndSolve:
             colIndReorgenize = [[' ' for _ in range(maxRowIndicatorsLength+1)] + [inds[len(inds)-1-i] if i < len(
                 inds) else ' ' for inds in self.column_indicators]] + colIndReorgenize
         colIndReorgenize = colIndReorgenize + [[' ' if i < maxRowIndicatorsLength else '_' for i in range(
-            len(self.board)+maxRowIndicatorsLength+1)]]
+            len(self.board[0])+maxRowIndicatorsLength+1)]]
         board_copy = colIndReorgenize + board_copy
         stringifyMatrix = [[str(e) for e in row] for row in board_copy]
         lens = [max(map(len, col)) for col in zip(*stringifyMatrix)]
@@ -573,7 +589,7 @@ class Cell:
         self.possibleColBlocks.append(-1)
         self.rowLength = rowLength
         self.colLength = colLength
-        self.markIfCertain()
+        # self.markIfCertain()
 
     def markIfCertain(self):
         row, col = self.coordinates
@@ -636,7 +652,9 @@ class Cell:
         for rang in indicator.ranges:
             start, finish = rang
             y, x = self.coordinates
-            return start <= y and y <= finish if indicator.axis == COLUMN else start <= x and x <= finish
+            if start <= y and y <= finish if indicator.axis == COLUMN else start <= x and x <= finish:
+                return True
+        return False
 
     def __str__(self) -> str:
         return self.content
@@ -653,10 +671,10 @@ class Indicator:
         if(len(self.ranges) == []):
             raise RuntimeError("ranges cannot be empty")
 
-    def maximalEnd(self):
+    def minimalStart(self):
         return max([range[1] for range in self.ranges])+1-self.blockLength
 
-    def minimalStart(self):
+    def minimalEnd(self):
         return min([range[0] for range in self.ranges])-1+self.blockLength
 
     def __str__(self) -> str:
@@ -668,9 +686,9 @@ class Indicator:
             return False
         for r in self.ranges:
             start, finish = r
-            if start > rangeStart or finish < rangeFinish:
-                return False
-        return True
+            if start <= rangeStart and finish >= rangeFinish:
+                return True
+        return False
 
     def addCell(self, cell: Cell):
         if cell in self.cells:
@@ -694,6 +712,8 @@ class Indicator:
                 self.ranges[i] = (rangeStart, end)
         self.ranges = list(filter(
             lambda rang: rang[1]-rang[0]+1 >= self.blockLength, self.ranges))
+        self.ranges = list(filter(
+            lambda rang: x <= rang[1] and x >= rang[0] if self.axis == ROW else y <= rang[1] and y >= rang[0], self.ranges))
         if(len(self.ranges) == 0):
             raise RuntimeError("ranges cannot be empty")
 
@@ -744,4 +764,4 @@ class Indicator:
 bas = BlackAndSolve.fromJsonFile("blackAndSolve2.json")
 iterations = bas.solve()
 bas.printState()
-print("took "+ str(iterations) +" iterations")
+print("took " + str(iterations) + " iterations")
