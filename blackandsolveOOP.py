@@ -1,5 +1,6 @@
 from typing import Tuple
 from queue import Queue
+from datetime import datetime
 import json
 
 UNKNOWN = '◻'
@@ -92,10 +93,11 @@ class BlackAndSolve:
                 cell.markIfEmpty()
 
     def solve(self):
+        startTime = datetime.now()
         count = 0
         previosState = ''
         currentState = self.boardRepresentation()
-        while not bas.isSolved() and count < 50 and previosState != currentState:
+        while not bas.isSolved() and previosState != currentState:
             count += 1
             self.markEmptiesUsingFilled()
             self.markEmptiesUsingEmpty()
@@ -110,7 +112,8 @@ class BlackAndSolve:
             self.addCellsToIndicators()
             previosState = currentState
             currentState = self.boardRepresentation()
-        return count
+        timePassed = datetime.now() - startTime
+        return (count, timePassed)
 
     def boardRepresentation(self):
         return str(self) + "\n" + \
@@ -143,7 +146,7 @@ class BlackAndSolve:
                 current_indicator: Indicator = one_indicator_list[i]
                 if i+1 < len(one_indicator_list):
                     minimalStart = one_indicator_list[i +
-                                                      1].minimalStart()-1
+                                                      1].minimalStart()-2
                     indexes_to_remove = []
                     for j in range(len(current_indicator.ranges)):
                         start, finish = current_indicator.ranges[j]
@@ -158,7 +161,7 @@ class BlackAndSolve:
                         del current_indicator.ranges[index]
                 if i-1 >= 0:
                     minimalEnd = one_indicator_list[i -
-                                                    1].minimalEnd()+1
+                                                    1].minimalEnd()+2
                     indexes_to_remove = []
                     for j in range(len(current_indicator.ranges)):
                         start, finish = current_indicator.ranges[j]
@@ -251,12 +254,12 @@ class BlackAndSolve:
             if(ind.axis == COLUMN):
                 if(start-1 >= 0):
                     self.board[start-1][y].markWith(EMPTY)
-                if(end+1 < len(self.board[x])):
+                if(end+1 < len(self.board)):
                     self.board[end+1][y].markWith(EMPTY)
             if(ind.axis == ROW):
                 if(start-1 >= 0):
                     self.board[x][start-1].markWith(EMPTY)
-                if(end+1 < len(self.board)):
+                if(end+1 < len(self.board[x])):
                     self.board[x][end+1].markWith(EMPTY)
 
     def blockIndicatorIdentity(self):
@@ -761,7 +764,8 @@ class Indicator:
             raise RuntimeError("ranges cannot be empty")
 
 
-bas = BlackAndSolve.fromJsonFile("blackAndSolve2.json")
-iterations = bas.solve()
+bas = BlackAndSolve.fromJsonFile("blackAndSolve1.json")
+iterations, timePassed = bas.solve()
 bas.printState()
 print("took " + str(iterations) + " iterations")
+print("took " + str(timePassed) + " seconds")
