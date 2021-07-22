@@ -91,6 +91,16 @@ class BlackAndSolve:
         for row in self.board:
             for cell in row:
                 cell.markIfEmpty()
+        self.validify()
+
+    def validify(self):
+        rowSum = sum([sum([ind.blockLength for ind in oneRowIndicators])
+                     for oneRowIndicators in self.row_indicators])
+        colSum = sum([sum([ind.blockLength for ind in oneColIndicators])
+                     for oneColIndicators in self.column_indicators])
+        if(rowSum != colSum):
+            raise RuntimeError(
+                "row indicators and column indicators sum is not the same")
 
     def solve(self):
         startTime = datetime.now()
@@ -110,6 +120,8 @@ class BlackAndSolve:
             self.fillIndicatorsByTheirRange()
             self.cellWithNoPossibleIndicators()
             self.addCellsToIndicators()
+            self.cellInIndicatorWithLengthOne()
+            self.cellsCantBeAnythingElse()
             previosState = currentState
             currentState = self.boardRepresentation()
         timePassed = datetime.now() - startTime
@@ -120,6 +132,92 @@ class BlackAndSolve:
             str([[ind.ranges for ind in row_ind]for row_ind in self.row_indicators]) + \
             "\n" + str([[ind.ranges for ind in col_ind]
                        for col_ind in self.column_indicators])
+
+    def cellsCantBeAnythingElse(self):
+        for i in range(len(self.row_indicators)):
+            rowIndicatorList: 'list[Indicator]' = self.row_indicators[i]
+            self.cellsCantBeAnythingElseForLine(
+                rowIndicatorList, self.board[i])
+        for i in range(len(self.column_indicators)):
+            colIndicatorList: 'list[Indicator]' = self.column_indicators[i]
+            self.cellsCantBeAnythingElseForLine(
+                colIndicatorList, [self.board[j][i] for j in range(len(self.board))])
+
+    def cellsCantBeAnythingElseForLine(self, rowIndicatorList: 'list[Indicator]', line: 'list[Cell]'):
+        x = 0
+        for indicator in rowIndicatorList:
+            if indicator.isFull():
+                x = max([cell.coordinates[1] if indicator.axis == ROW else cell.coordinates[0]
+                         for cell in indicator.cells])+2
+            else:
+                for k in range(x, len(self.board[0]) if indicator.axis == ROW else len(self.board)):
+                    if line[k].content == FILLED:
+                        itemsToRemove = []
+                        for n in range(len(indicator.ranges)):
+                            start, finish = indicator.ranges[n]
+                            if start > k:
+                                itemsToRemove.append(indicator.ranges[n])
+                            elif k >= start <= finish:
+                                indicator.ranges[n] = (start, min(
+                                    finish, k+indicator.blockLength-1))
+                        for item in itemsToRemove:
+                            indicator.ranges.remove(item)
+                        indicator.ranges = list(filter(
+                            lambda rang: rang[1]-rang[0]+1 >= indicator.blockLength, indicator.ranges))
+                        if(indicator.ranges == []):
+                            raise RuntimeError("ranges cannot be empty")
+                        break
+                break
+        x = len(line)-1
+        for indicator in reversed(rowIndicatorList):
+            if indicator.isFull():
+                x = min([cell.coordinates[1] if indicator.axis == ROW else cell.coordinates[0]
+                         for cell in indicator.cells])-2
+            else:
+                for k in reversed(range(0, x+1)):
+                    if line[k].content == FILLED:
+                        itemsToRemove = []
+                        for n in range(len(indicator.ranges)):
+                            start, finish = indicator.ranges[n]
+                            if finish < k:
+                                itemsToRemove.append(indicator.ranges[n])
+                            elif k >= start <= finish:
+                                indicator.ranges[n] = (
+                                    max(start, k-indicator.blockLength+1), finish)
+                        for item in itemsToRemove:
+                            indicator.ranges.remove(item)
+                        indicator.ranges = list(filter(
+                            lambda rang: rang[1]-rang[0]+1 >= indicator.blockLength, indicator.ranges))
+                        if(indicator.ranges == []):
+                            raise RuntimeError("ranges acannot be empty")
+                        break
+                break
+
+    def cellInIndicatorWithLengthOne(self):
+        for row in self.board:
+            for cell in row:
+                x, y = cell.coordinates
+                if cell.content == FILLED:
+                    allAreOnesRow = True
+                    for row_indicator_index in cell.possibleRowBlocks:
+                        if cell.rowIndicatorsList[row_indicator_index].blockLength != 1:
+                            allAreOnesRow = False
+                            break
+                    if(allAreOnesRow):
+                        if y > 0:
+                            self.board[x][y-1].markWith(EMPTY)
+                        if y+1 < len(self.board[x]):
+                            self.board[x][y+1].markWith(EMPTY)
+                    allAreOnesCol = True
+                    for col_indicator_index in cell.possibleColBlocks:
+                        if cell.colIndicatorsList[col_indicator_index].blockLength != 1:
+                            allAreOnesCol = False
+                            break
+                    if(allAreOnesCol):
+                        if x > 0:
+                            self.board[x-1][y].markWith(EMPTY)
+                        if x+1 < len(self.board):
+                            self.board[x+1][y].markWith(EMPTY)
 
     @classmethod
     def fromJsonFile(cls, fileName):
@@ -438,8 +536,8 @@ class BlackAndSolve:
     def markEmptiesLineUsingFilledCells(self, index: int, axis):
         indicators: list[Indicator] = self.column_indicators[index] if axis == COLUMN else self.row_indicators[index]
         maxLength = len(self.board) if axis == COLUMN else len(self.board[0])
-        naiveRanges = [naiveRange(indicators, index, maxLength)
-                       for index in range(len(indicators))]
+        naiveRanges = [(min([rang[0] for rang in indicator.ranges]), max([rang[1] for rang in indicator.ranges]))
+                       for indicator in indicators]
         line = self.board[index] if axis == ROW else [
             self.board[i][index] for i in range(maxLength)]
         for i in range(len(line)):
@@ -468,8 +566,8 @@ class BlackAndSolve:
     def markEmptiesLineUsingEmptyCells(self, index: int, axis):
         indicators: list[Indicator] = self.column_indicators[index] if axis == COLUMN else self.row_indicators[index]
         maxLength = len(self.board) if axis == COLUMN else len(self.board[0])
-        naiveRanges = [naiveRange(indicators, index, maxLength)
-                       for index in range(len(indicators))]
+        naiveRanges = [(min([rang[0] for rang in indicator.ranges]), max([rang[1] for rang in indicator.ranges]))
+                       for indicator in indicators]
         line = self.board[index] if axis == ROW else [
             self.board[i][index] for i in range(maxLength)]
         cellsContent = [cell.content for cell in line]
@@ -517,7 +615,7 @@ class BlackAndSolve:
                     for cell in line[myNonEmptyRangeLeft:myNonEmptyRangeRight+1]:
                         if(axis == COLUMN):
                             cell.removeFromPossibleColList(i)
-                        else:  # (axis == COLUMN):
+                        else:  # (axis == ROW):
                             cell.removeFromPossibleRowList(i)
 
     def fillGapsRow(self, line: 'list[Cell]'):
@@ -764,7 +862,7 @@ class Indicator:
             raise RuntimeError("ranges cannot be empty")
 
 
-bas = BlackAndSolve.fromJsonFile("blackAndSolve1.json")
+bas = BlackAndSolve.fromJsonFile("blackAndSolve3.json")
 iterations, timePassed = bas.solve()
 bas.printState()
 print("took " + str(iterations) + " iterations")
